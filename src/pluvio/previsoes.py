@@ -29,6 +29,11 @@ def ler_modelo(pasta: str | Path, modelo: str) -> pd.DataFrame:
         tabela["time"] = pd.to_datetime(tabela["time"], utc=True)
         partes.append(tabela.set_index("time").astype("float64"))
     tudo = pd.concat(partes)
+    antigas = [c for c in tudo.columns if "_previous_day" in c]
+    # nunique(dropna=False) conta NaN como valor: "tem num arquivo e falta no outro" também é divergência
+    versoes = tudo[antigas].groupby(level=0).nunique(dropna=False)
+    if (versoes > 1).any().any():
+        raise ValueError(f"{modelo}: a mesma hora tem previsões diferentes em arquivos vizinhos")
     unica = tudo[~tudo.index.duplicated(keep="first")].sort_index()
     return unica.asfreq("h")
 

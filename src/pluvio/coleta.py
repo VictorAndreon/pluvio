@@ -66,7 +66,7 @@ def pedir_com_paciencia(params: dict, tentativas: int = 15) -> dict:
     espera = 5.0
     for tentativa in range(1, tentativas + 1):
         try:
-            resposta = requests.get(URL, params=params, timeout=120)
+            resposta = requests.get(URL, params=params, timeout=(10, 40))  # (conectar, ler) em segundos
             if 400 <= resposta.status_code < 500 and resposta.status_code != 429:
                 raise RuntimeError(f"pedido recusado: HTTP {resposta.status_code} {resposta.text[:300]}")
             dados = resposta.json() if resposta.status_code == 200 else None
