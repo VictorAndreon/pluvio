@@ -9,7 +9,9 @@ a mesma coisa de novo.
 Uso:
     python -m pluvio.coleta --ate 2026-10  # de jan/2024 até o mês indicado (inclusive)
 
-Um arquivo por modelo e por mês: data/raw/openmeteo/<modelo>/<AAAA-MM>.json
+Baixa para TODAS as estações que têm CSV em data/raw/inmet, usando a
+coordenada do cabeçalho de cada uma. Um arquivo por estação, modelo e mês:
+data/raw/openmeteo/<estação>/<modelo>/<AAAA-MM>.json
 Arquivo que já existe não é baixado de novo.
 """
 from __future__ import annotations
@@ -23,8 +25,9 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from .inmet import listar_estacoes
+
 URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
-LATITUDE, LONGITUDE = -28.2267, -52.4036   # estação INMET A839
 
 # Modelos globais explícitos (não os "_seamless", que podem trocar de modelo
 # por baixo dos panos ao longo do tempo).
@@ -41,11 +44,11 @@ MARGEM_DIAS = 2
 PAUSA_S = 2.0
 
 
-def parametros(modelo: str, mes: pd.Period) -> dict:
+def parametros(estacao: dict, modelo: str, mes: pd.Period) -> dict:
     margem = pd.Timedelta(days=MARGEM_DIAS)
     return {
-        "latitude": LATITUDE,
-        "longitude": LONGITUDE,
+        "latitude": round(estacao["latitude"], 4),
+        "longitude": round(estacao["longitude"], 4),
         "hourly": ",".join(v + d for v in VARIAVEIS for d in DEFASAGENS),
         "models": modelo,
         "start_date": (mes.start_time - margem).strftime("%Y-%m-%d"),
@@ -82,11 +85,11 @@ def pedir_com_paciencia(params: dict, tentativas: int = 15) -> dict:
         espera = min(espera * 2, 30.0)
 
 
-def baixar(modelo: str, mes: pd.Period, pasta: Path) -> str:
-    destino = pasta / modelo / f"{mes}.json"
+def baixar(estacao: dict, modelo: str, mes: pd.Period, pasta: Path) -> str:
+    destino = pasta / estacao["codigo"] / modelo / f"{mes}.json"
     if destino.exists():
         return "já existe"
-    params = parametros(modelo, mes)
+    params = parametros(estacao, modelo, mes)
     dados = pedir_com_paciencia(params)
     pacote = {
         "pedido": {"url": URL, "params": params},
@@ -108,11 +111,13 @@ def main() -> None:
     ap.add_argument("--de", default=PRIMEIRO_MES, help="primeiro mês, AAAA-MM")
     ap.add_argument("--ate", required=True, help="último mês, AAAA-MM (inclusive)")
     ap.add_argument("--pasta", default="data/raw/openmeteo")
+    ap.add_argument("--inmet", default="data/raw/inmet")
     args = ap.parse_args()
 
-    for mes in pd.period_range(args.de, args.ate, freq="M"):
-        for modelo in MODELOS:
-            print(f"{mes} {modelo}: {baixar(modelo, mes, Path(args.pasta))}", flush=True)
+    for codigo, estacao in listar_estacoes(args.inmet).items():
+        for mes in pd.period_range(args.de, args.ate, freq="M"):
+            for modelo in MODELOS:
+                print(f"{codigo} {mes} {modelo}: {baixar(estacao, modelo, mes, Path(args.pasta))}", flush=True)
 
 
 if __name__ == "__main__":

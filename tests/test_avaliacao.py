@@ -49,3 +49,18 @@ def test_ponto_de_operacao_escolhe_o_limiar_mais_alto_que_atinge_o_recall():
     assert p["limiar"] == 10
     assert p["alarmes_falsos"] == 1
     assert ponto_de_operacao(evento, mm, recall_minimo=0.5)["limiar"] == 30
+
+
+def test_bootstrap_em_blocos_cobre_o_valor_e_estreita_com_mais_dados():
+    import pandas as pd
+    from pluvio.avaliacao import bootstrap_em_blocos
+    rng = np.random.default_rng(0)
+
+    def largura(n_dias):
+        datas = pd.date_range("2024-01-01", periods=n_dias, freq="D")
+        x = rng.normal(loc=5.0, size=n_dias)
+        baixo, alto = bootstrap_em_blocos(datas, lambda i: x[i].mean(), n_reamostras=500)
+        assert baixo < 5.0 < alto
+        return alto - baixo
+
+    assert largura(2800) < largura(140)

@@ -3,9 +3,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pluvio.inmet import ler_csv, ler_pasta
+from pluvio.inmet import ler_csv, ler_metadados, ler_pasta, listar_estacoes
 
-META = "\n".join(f"META{i}:;x" for i in range(8)) + "\n"
+META = (
+    "REGIAO:;S\nUF:;RS\nESTACAO:;PASSO FUNDO\nCODIGO (WMO):;A839\n"
+    "LATITUDE:;-28,22666666\nLONGITUDE:;-52,40361111\nALTITUDE:;680,67\nDATA DE FUNDACAO:;27/11/06\n"
+)
 ANTIGO = META + (
     "DATA (YYYY-MM-DD);HORA (UTC);PRECIPITACAO;PRESSAO;\n"
     "2015-01-01;00:00;0;931,2;\n"
@@ -53,3 +56,17 @@ def test_hora_sem_linha_no_arquivo_entra_como_nan(tmp_path):
     s = ler_pasta(tmp_path)
     assert len(s) == 3                  # a hora que faltava foi recriada...
     assert np.isnan(s.iloc[1])          # ...como "não sei"
+
+
+def test_metadados_com_virgula_decimal(tmp_path):
+    meta = ler_metadados(escrever(tmp_path, "a.CSV", NOVO))
+    assert meta["codigo"] == "A839"
+    assert meta["latitude"] == pytest.approx(-28.2267, abs=1e-4)
+
+
+def test_ler_pasta_separa_estacoes(tmp_path):
+    escrever(tmp_path, "X_A839_2019.CSV", NOVO)
+    escrever(tmp_path, "X_A999_2019.CSV", NOVO.replace("A839", "A999").replace(";0;934,5", ";7;934,5"))
+    assert set(listar_estacoes(tmp_path)) == {"A839", "A999"}
+    assert ler_pasta(tmp_path, "A839").iloc[0] == 0.0
+    assert ler_pasta(tmp_path, "A999").iloc[0] == 7.0

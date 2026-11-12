@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def ler_modelo(pasta: str | Path, modelo: str) -> pd.DataFrame:
+def ler_modelo(pasta: str | Path, modelo: str, estacao: str = "A839") -> pd.DataFrame:
     """Junta os arquivos mensais de um modelo numa tabela horária (índice UTC).
 
     Os meses foram baixados com 2 dias de sobra de cada lado, então há horas
@@ -19,7 +19,7 @@ def ler_modelo(pasta: str | Path, modelo: str) -> pd.DataFrame:
     conferir que as repetidas dizem a mesma coisa para as defasagens day1/day2
     (previsão antiga não muda; se mudasse, o arquivo não seria reprodutível).
     """
-    arquivos = sorted((Path(pasta) / modelo).glob("*.json"))
+    arquivos = sorted((Path(pasta) / estacao / modelo).glob("*.json"))
     if not arquivos:
         raise FileNotFoundError(f"nenhum JSON de {modelo} em {pasta}")
     partes = []
@@ -38,8 +38,8 @@ def ler_modelo(pasta: str | Path, modelo: str) -> pd.DataFrame:
     return unica.asfreq("h")
 
 
-def grade(pasta: str | Path, modelo: str) -> dict:
+def grade(pasta: str | Path, modelo: str, estacao: str = "A839") -> dict:
     """Ponto de grade que a API de fato usou para esse modelo."""
-    arquivo = sorted((Path(pasta) / modelo).glob("*.json"))[0]
+    arquivo = sorted((Path(pasta) / estacao / modelo).glob("*.json"))[0]
     r = json.loads(arquivo.read_text(encoding="utf-8"))["resposta"]
     return {"latitude": r["latitude"], "longitude": r["longitude"], "elevacao_m": r["elevation"]}

@@ -110,3 +110,33 @@ def ponto_de_operacao(evento, pontuacao, recall_minimo: float) -> dict:
     curva = curva_de_limiares(evento, pontuacao)
     ok = curva[curva["recall"] >= recall_minimo]
     return ok.iloc[0].to_dict() if len(ok) else {}
+
+
+def bootstrap_em_blocos(datas, estatistica, n_reamostras: int = 2000, dias_por_bloco: int = 7,
+                        semente: int = 0) -> tuple[float, float]:
+    """Intervalo de 95% para `estatistica`, reamostrando SEMANAS inteiras.
+
+    Bootstrap = "e se o período tivesse sido outro?": sorteia blocos com
+    reposição, recalcula a estatística, repete milhares de vezes e olha o
+    espalhamento do resultado.
+
+    Por que blocos e não dias soltos: dias vizinhos são parecidos (a mesma
+    frente dura dias, e várias estações veem o mesmo sistema). Sortear dias
+    soltos trataria 3 dias da mesma frente como 3 evidências independentes e
+    daria um intervalo estreito demais. Sorteando o bloco inteiro, o que anda
+    junto continua junto.
+
+    `datas`       : data de cada linha (pode repetir, uma por estação).
+    `estatistica` : função que recebe um vetor de posições (inteiros) e
+                    devolve um número.
+    """
+    datas = pd.DatetimeIndex(datas)
+    bloco = (datas - datas.min()).days // dias_por_bloco
+    posicoes_por_bloco = [np.flatnonzero(bloco == b) for b in np.unique(bloco)]
+    rng = np.random.default_rng(semente)
+    valores = []
+    for _ in range(n_reamostras):
+        sorteio = rng.integers(0, len(posicoes_por_bloco), len(posicoes_por_bloco))
+        valores.append(estatistica(np.concatenate([posicoes_por_bloco[i] for i in sorteio])))
+    baixo, alto = np.nanpercentile(valores, [2.5, 97.5])
+    return float(baixo), float(alto)

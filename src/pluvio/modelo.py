@@ -43,21 +43,45 @@ def dobras(indice: pd.DatetimeIndex, primeiro_mes_previsto: str):
         yield indice[meses < mes], indice[meses == mes]
 
 
+def limiar_para_recall(evento, prob, recall_minimo: float) -> float:
+    """Maior limiar de probabilidade que ainda pega `recall_minimo` dos eventos dados."""
+    dos_eventos = np.sort(np.asarray(prob)[np.asarray(evento, dtype=bool)])[::-1]
+    quantos = int(np.ceil(recall_minimo * len(dos_eventos)))
+    return float(dos_eventos[quantos - 1])
+
+
 def prever_andando(tabela: pd.DataFrame, colunas: list[str], primeiro_mes_previsto: str,
-                   alvo: str = "evento") -> pd.Series:
-    """Probabilidade fora-da-amostra para cada dia a partir de `primeiro_mes_previsto`.
+                   alvo: str = "evento", recall_alvo: float = 0.70) -> pd.DataFrame:
+    """Previsão fora-da-amostra para cada dia a partir de `primeiro_mes_previsto`.
+
+    Devolve duas colunas:
+      prob   : probabilidade dada por um modelo treinado só com meses anteriores
+      alerta : prob >= limiar, com o limiar TAMBÉM escolhido só no treino
+               (o mais alto que pegaria `recall_alvo` dos eventos de treino).
+
+    Escolher o limiar depois, olhando as previsões do período avaliado, daria
+    uma contagem de alarmes falsos otimista: seria usar o gabarito para
+    decidir onde cortar.
 
     `tabela` não pode ter NaN em `colunas` nem em `alvo` (filtre antes, de
     propósito: decidir o que fazer com dia incompleto é decisão sua, não do código).
+    O índice pode ter datas repetidas (várias estações no mesmo dia): a divisão
+    é por mês do calendário, então o mesmo dia nunca cai em lados diferentes.
     """
     if tabela[colunas + [alvo]].isna().any().any():
         raise ValueError("há NaN nas colunas usadas; filtre a tabela antes")
+    datas = tabela.index
+    meses = datas.to_period("M")
     partes = []
-    for treino, previsto in dobras(tabela.index, primeiro_mes_previsto):
-        y = tabela.loc[treino, alvo].astype(int)
+    for mes in sorted(meses.unique()):
+        if mes < pd.Period(primeiro_mes_previsto, freq="M"):
+            continue
+        treino, previsto = tabela[meses < mes], tabela[meses == mes]
+        y = treino[alvo].astype(int)
         if y.nunique() < 2:
             continue   # sem evento no treino não há o que aprender
-        m = novo_modelo().fit(tabela.loc[treino, colunas], y)
-        p = m.predict_proba(tabela.loc[previsto, colunas])[:, 1]
-        partes.append(pd.Series(p, index=previsto))
-    return pd.concat(partes).rename("prob")
+        m = novo_modelo().fit(treino[colunas], y)
+        limiar = limiar_para_recall(y, m.predict_proba(treino[colunas])[:, 1], recall_alvo)
+        p = m.predict_proba(previsto[colunas])[:, 1]
+        partes.append(pd.DataFrame({"prob": p, "alerta": p >= limiar}, index=previsto.index))
+    return pd.concat(partes)

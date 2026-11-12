@@ -79,7 +79,14 @@ Outros cuidados:
   meses anteriores. Sorteio aleatório de dias vazaria, porque dias vizinhos
   pertencem ao mesmo sistema de tempo.
 - **Nada é ajustado olhando resultado.** Regressão logística com `C=1.0`,
-  padronização aprendida só no treino, sem busca de hiperparâmetro.
+  padronização aprendida só no treino, sem busca de hiperparâmetro. O limiar
+  de alerta de cada mês também é escolhido só com os meses anteriores.
+- **Incerteza por bootstrap em blocos de uma semana.** Dias vizinhos (e
+  estações vizinhas no mesmo dia) veem o mesmo sistema de tempo; reamostrar
+  dias soltos daria intervalos estreitos demais.
+- **Entradas do modelo combinado fixadas por argumento:** maior chuva prevista
+  entre os três modelos, CAPE do GFS e climatologia do mês. A "discordância
+  entre modelos" saiu por ter correlação de 0,86 com o máximo.
 - **Teste trancado.** `benchmark.py` corta a tabela em 30/06/2026 antes de
   calcular qualquer coisa.
 
@@ -93,6 +100,9 @@ Outros cuidados:
 - **ECMWF em blocos de 3h.** A Open-Meteo repete o mesmo valor nas 3 horas do
   bloco. Os totais mensais batem com os dos outros modelos, o que indica que o
   valor já é o total do bloco dividido por 3.
+- **Alinhamento de hora conferido só indiretamente.** A correlação horária
+  entre estação e previsões é máxima sem deslocamento, o que é compatível com
+  as duas fontes usarem a hora como fim do período.
 - **Falhas da estação.** 21% das horas de 2025 e 11% das de 2026 estão
   ausentes.
 - **2024 foi um ano anômalo** (El Niño, enchentes de maio no RS) e concentra a
@@ -120,7 +130,8 @@ python -m pluvio.benchmark --modo conservador
 
 ```
 data/raw/inmet/        CSVs da estação, como vieram do INMET
-data/raw/openmeteo/    JSON bruto da API, um por modelo e mês
+data/raw/openmeteo/    JSON bruto da API: <estação>/<modelo>/<mês>.json
+scripts/selecionar_vizinhas.py  escolhe estações do INMET por distância
 src/pluvio/inmet.py    leitura dos dois formatos de CSV
 src/pluvio/rotulo.py   janela de 3h e rótulo diário
 src/pluvio/coleta.py   download das previsões

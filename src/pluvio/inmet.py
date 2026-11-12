@@ -48,18 +48,52 @@ def ler_csv(caminho: str | Path) -> pd.Series:
     return pd.Series(chuva.to_numpy(), index=instante, name="chuva_mm")
 
 
-def ler_pasta(pasta: str | Path) -> pd.Series:
-    """Junta todos os CSVs da pasta numa série horária contínua.
+def ler_metadados(caminho: str | Path) -> dict:
+    """Código, nome e coordenadas da estação, tirados das 8 linhas do cabeçalho.
+
+    As chaves do cabeçalho mudam de acentuação entre anos ("ESTAÇÃO", "ESTACAO",
+    "ESTAC?O"), então lemos por POSIÇÃO da linha, que é estável.
+    """
+    with open(caminho, encoding="latin-1") as arquivo:
+        valores = [arquivo.readline().rstrip("\n").split(";", 1)[1].strip() for _ in range(LINHAS_DE_METADADOS)]
+    return {
+        "nome": valores[2],
+        "codigo": valores[3],
+        "latitude": float(valores[4].replace(",", ".")),
+        "longitude": float(valores[5].replace(",", ".")),
+        "altitude_m": float(valores[6].replace(",", ".")),
+    }
+
+
+def listar_estacoes(pasta: str | Path) -> dict[str, dict]:
+    """{código: metadados} de todas as estações com CSV na pasta.
+
+    Se a coordenada mudou ao longo dos anos (o INMET corrigiu a de Passo Fundo
+    em 2019), vale a do arquivo mais recente.
+    """
+    estacoes: dict[str, dict] = {}
+    for arquivo in sorted(Path(pasta).glob("*.CSV"), key=_ano_do_arquivo):
+        meta = ler_metadados(arquivo)
+        estacoes[meta["codigo"]] = meta
+    return estacoes
+
+
+def _ano_do_arquivo(arquivo: Path) -> str:
+    return arquivo.stem[-4:]      # o nome termina em "..._A_31-12-2024"
+
+
+def ler_pasta(pasta: str | Path, codigo: str = "A839") -> pd.Series:
+    """Junta todos os CSVs de UMA estação numa série horária contínua.
 
     Horas que não aparecem em arquivo nenhum entram como NaN: a série final
     tem exatamente uma linha por hora entre o primeiro e o último registro.
     Isso importa porque a janela de 3h é calculada por POSIÇÃO; se houvesse
     um buraco no índice, três linhas seguidas poderiam cobrir mais de 3 horas.
     """
-    arquivos = sorted(Path(pasta).glob("*.CSV"))
+    arquivos = [a for a in sorted(Path(pasta).glob("*.CSV")) if ler_metadados(a)["codigo"] == codigo]
     if not arquivos:
-        raise FileNotFoundError(f"nenhum .CSV em {pasta}")
+        raise FileNotFoundError(f"nenhum .CSV da estação {codigo} em {pasta}")
     serie = pd.concat([ler_csv(a) for a in arquivos]).sort_index()
     if serie.index.has_duplicates:
-        raise ValueError("hora repetida entre arquivos; conferir os CSVs")
+        raise ValueError(f"{codigo}: hora repetida entre arquivos; conferir os CSVs")
     return serie.asfreq("h")
