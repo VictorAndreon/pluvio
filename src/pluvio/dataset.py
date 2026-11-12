@@ -94,3 +94,32 @@ def montar(rotulos: pd.DataFrame, modelos: dict[str, pd.DataFrame], modo: str) -
             cape = serie_disponivel(tabela, "cape", modo)
             saida[f"cape_{nome}"] = resumo_diario(cape, "max")
     return saida
+
+
+def observado_ate_emissao(chuva_utc: pd.Series) -> pd.Series:
+    """Maior soma de 3h observada na VÉSPERA até as 21h, indexada pelo dia-alvo.
+
+    É a versão honesta de "choveu forte hoje?". Às 21h o dia ainda não
+    acabou: só existem as janelas que terminam até 21h local (00:00 UTC do
+    dia-alvo). São 21 das 24 janelas da véspera; se faltar alguma, NaN.
+    Usar o rótulo do dia inteiro aqui seria vazamento (3 horas de futuro).
+    """
+    soma = soma_movel(chuva_utc, JANELA_H)
+    dia = dia_local(soma.index)
+    hora_local_fim = (soma.index + pd.Timedelta(hours=-3)).hour   # 0 = meia-noite = fim do dia
+    ate_21h = (hora_local_fim >= 1) & (hora_local_fim <= 21)
+    visivel = soma[ate_21h]
+    grupos = visivel.groupby(dia[ate_21h])
+    valor = grupos.max().where(grupos.count() == 21)
+    valor.index = valor.index + pd.Timedelta(days=1)   # véspera -> dia-alvo
+    return valor.rename("obs_vespera_ate_21h_mm")
+
+
+def climatologia_mensal(rotulos: pd.DataFrame, ate: str) -> pd.Series:
+    """Fração de dias com evento em cada mês do ano, usando só dias até `ate`.
+
+    `ate` precisa ser anterior ao período de treino/teste (usamos 2023-12-31):
+    assim a climatologia nunca contém um dia que o modelo vai tentar prever.
+    """
+    passado = rotulos.loc[:ate, "evento"].dropna().astype(float)
+    return passado.groupby(passado.index.month).mean().rename("clima_mes")

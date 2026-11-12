@@ -54,3 +54,25 @@ def test_resumo_diario_com_hora_faltando_e_nan():
     s = pd.Series(0.0, index=idx)
     s["2024-10-02 12:00"] = np.nan
     assert np.isnan(resumo_diario(s, "max_3h")[pd.Timestamp("2024-10-02")])
+
+
+def test_persistencia_nao_enxerga_chuva_depois_das_21h_da_vespera():
+    from pluvio.dataset import observado_ate_emissao
+    idx = pd.date_range("2024-09-29 04:00", periods=120, freq="h", tz="UTC")
+    s = pd.Series(0.0, index=idx)
+    # 22h-23h local de 01/10 = registro 02:00 UTC de 02/10: DEPOIS da emissão das 21h
+    s["2024-10-02 02:00"] = 50.0
+    r = observado_ate_emissao(s)
+    assert r[pd.Timestamp("2024-10-02")] == 0.0     # a previsão para 02/10 não viu os 50 mm
+    # 20h-21h local de 01/10 = registro 00:00 UTC de 02/10: último instante visível
+    s["2024-10-02 00:00"] = 30.0
+    assert observado_ate_emissao(s)[pd.Timestamp("2024-10-02")] == 30.0
+
+
+def test_climatologia_ignora_dias_depois_do_corte():
+    from pluvio.dataset import climatologia_mensal
+    dias = pd.date_range("2023-10-01", "2024-10-31", freq="D")
+    rot = pd.DataFrame({"evento": pd.array([False] * len(dias), dtype="boolean")}, index=dias)
+    rot.loc["2024-10-01":"2024-10-31", "evento"] = True     # outubro de 2024 cheio de eventos
+    clima = climatologia_mensal(rot, ate="2023-12-31")
+    assert clima[10] == 0.0                                  # ...que a climatologia não pode ver
